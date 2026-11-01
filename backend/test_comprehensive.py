@@ -68,23 +68,23 @@ def test_edge_cases_and_ranges():
     client.post("/api/reset")
 
     # 1. Range where min_price > max_price (should return 400 error)
-    res_err = client.get("/api/search?min_price=100.00&max_price=50.00")
+    res_err = client.get("/api/search?min_price=10000.00&max_price=5000.00")
     assert res_err.status_code == 400
     assert "cannot exceed" in res_err.json["error"]
     print("  [OK] Invalid range bounds min > max rejected with HTTP 400.")
 
     # 2. Range that matches zero items
-    res_empty = client.get("/api/search?min_price=1000.00&max_price=2000.00")
+    res_empty = client.get("/api/search?min_price=100000.00&max_price=200000.00")
     assert res_empty.status_code == 200
     assert res_empty.json["count"] == 0
     print("  [OK] Non-matching range returned empty array with HTTP 200.")
 
     # 3. Exact price with trace
-    res_trace = client.get("/api/search?price=12.99")
+    res_trace = client.get("/api/search?price=999.00")
     assert res_trace.status_code == 200
     assert res_trace.json["count"] == 2  # Duplicate price (USB Cable & Aux Cable)
     assert len(res_trace.json["trace"]) > 0
-    print(f"  [OK] Exact price search for $12.99 returned 2 duplicate products with {len(res_trace.json['trace'])} trace steps.")
+    print(f"  [OK] Exact price search for Rs.999.00 returned 2 duplicate products with {len(res_trace.json['trace'])} trace steps.")
 
 
 def test_tree_serialization_schema():
@@ -121,10 +121,10 @@ def test_rotation_scenarios_e2e():
         assert data["success"] is True
         assert data["stats"]["total_products"] == 3
         assert data["stats"]["distinct_prices"] == 3
-        # In all 4 demo scenarios, node 20.00 is designed to become the root
-        assert data["tree"]["price"] == 20.00
+        # In all 4 demo scenarios, node 2000.00 is designed to become the root
+        assert data["tree"]["price"] == 2000.00
         assert data["stats"]["is_balanced"] is True
-        print(f"  [OK] Scenario {rot}: Rebalancing executed. Root is $20.00, BF={data['tree']['balance_factor']}.")
+        print(f"  [OK] Scenario {rot}: Rebalancing executed. Root is Rs.2000.00, BF={data['tree']['balance_factor']}.")
 
     # Restore default demo catalog
     client.post("/api/reset")

@@ -157,32 +157,32 @@ class ProductManager:
         st = scenario_type.upper()
         if st == "LL":
             items = [
-                ("Ergonomic Keyboard", "Peripherals", 30.00),
-                ("Wireless Mouse", "Peripherals", 20.00),
-                ("Braided Cable", "Accessories", 10.00),
+                ("Ergonomic Keyboard", "Peripherals", 3000.00),
+                ("Wireless Mouse", "Peripherals", 2000.00),
+                ("Braided Cable", "Accessories", 1000.00),
             ]
-            desc = "LL Imbalance: Inserted 30.00 \u2192 20.00 (Left) \u2192 10.00 (Left). BF of 30 reached +2. Single Right Rotation performed. 20.00 is now Root."
+            desc = "LL Imbalance: Inserted 3000.00 \u2192 2000.00 (Left) \u2192 1000.00 (Left). BF of 3000 reached +2. Single Right Rotation performed. 2000.00 is now Root."
         elif st == "RR":
             items = [
-                ("Stylus Pen", "Stationery", 10.00),
-                ("Desk Mat", "Office", 20.00),
-                ("Wireless Headphones", "Audio", 30.00),
+                ("Stylus Pen", "Stationery", 1000.00),
+                ("Desk Mat", "Office", 2000.00),
+                ("Wireless Headphones", "Audio", 3000.00),
             ]
-            desc = "RR Imbalance: Inserted 10.00 \u2192 20.00 (Right) \u2192 30.00 (Right). BF of 10 reached -2. Single Left Rotation performed. 20.00 is now Root."
+            desc = "RR Imbalance: Inserted 1000.00 \u2192 2000.00 (Right) \u2192 3000.00 (Right). BF of 1000 reached -2. Single Left Rotation performed. 2000.00 is now Root."
         elif st == "LR":
             items = [
-                ("LED Desk Lamp", "Home Office", 30.00),
-                ("USB-C Adapter", "Accessories", 10.00),
-                ("Mousepad Pro", "Accessories", 20.00),
+                ("LED Desk Lamp", "Home Office", 3000.00),
+                ("USB-C Adapter", "Accessories", 1000.00),
+                ("Mousepad Pro", "Accessories", 2000.00),
             ]
-            desc = "LR Imbalance: Inserted 30.00 \u2192 10.00 (Left) \u2192 20.00 (Right). Double rotation: Left Rotate(10.00), then Right Rotate(30.00). 20.00 is now Root."
+            desc = "LR Imbalance: Inserted 3000.00 \u2192 1000.00 (Left) \u2192 2000.00 (Right). Double rotation: Left Rotate(1000.00), then Right Rotate(3000.00). 2000.00 is now Root."
         elif st == "RL":
             items = [
-                ("Webcam HD", "Displays", 10.00),
-                ("Condenser Mic", "Audio", 30.00),
-                ("Fast Charger", "Electronics", 20.00),
+                ("Webcam HD", "Displays", 1000.00),
+                ("Condenser Mic", "Audio", 3000.00),
+                ("Fast Charger", "Electronics", 2000.00),
             ]
-            desc = "RL Imbalance: Inserted 10.00 \u2192 30.00 (Right) \u2192 20.00 (Left). Double rotation: Right Rotate(30.00), then Left Rotate(10.00). 20.00 is now Root."
+            desc = "RL Imbalance: Inserted 1000.00 \u2192 3000.00 (Right) \u2192 2000.00 (Left). Double rotation: Right Rotate(3000.00), then Left Rotate(1000.00). 2000.00 is now Root."
         else:
             return {"success": False, "error": f"Unknown rotation scenario '{scenario_type}'"}
 
@@ -254,7 +254,80 @@ class ProductManager:
 
     def get_statistics(self) -> Dict[str, Any]:
         """Calculates dashboard statistics from the AVL Tree."""
-        return self.avl_tree.get_stats()
+        stats = self.avl_tree.get_stats()
+        stats["categories_count"] = len(self.get_category_distribution())
+        return stats
+
+    def get_last_operation_metrics(self) -> Dict[str, Any]:
+        """Returns complexity metrics and rotation count for the most recent insert/delete."""
+        return self.avl_tree.last_op_metrics
+
+    def get_complexity_guide(self) -> Dict[str, Any]:
+        """Returns algorithmic complexity breakdown for all AVL tree operations."""
+        return self.avl_tree.get_complexity_reference()
+
+    def find_closest_budget(self, budget: float) -> Dict[str, Any]:
+        """Finds closest product, predecessor, and successor in O(log n) time."""
+        return self.avl_tree.find_closest_budget(budget)
+
+    def get_tree_traversals(self) -> Dict[str, Any]:
+        """Returns in-order, pre-order, post-order, and level-order sequences."""
+        return self.avl_tree.get_all_traversals()
+
+    def validate_tree_invariants(self) -> Dict[str, Any]:
+        """Runs complete invariant audit on the AVL Tree."""
+        return self.avl_tree.validate_avl_invariants()
+
+    def get_category_distribution(self) -> List[Dict[str, Any]]:
+        """Computes product distribution and price ranges grouped by category."""
+        cat_map: Dict[str, List[float]] = {}
+        for p in self.products.values():
+            cat = p["category"]
+            cat_map.setdefault(cat, []).append(p["price"])
+
+        results = []
+        for cat, prices in cat_map.items():
+            results.append({
+                "category": cat,
+                "count": len(prices),
+                "min_price": round(min(prices), 2),
+                "max_price": round(max(prices), 2),
+                "avg_price": round(sum(prices) / len(prices), 2),
+            })
+        return sorted(results, key=lambda x: x["count"], reverse=True)
+
+    def bulk_add_products(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Inserts multiple products in batch."""
+        added = []
+        errors = []
+        for i, item in enumerate(items):
+            try:
+                name = str(item.get("name", "")).strip()
+                category = str(item.get("category", "")).strip()
+                price = float(item.get("price", 0))
+                if not name or not category or price < 0:
+                    errors.append(f"Row {i + 1}: Invalid name, category, or negative price.")
+                    continue
+                product = self.add_product(name, category, price)
+                added.append(product)
+            except Exception as e:
+                errors.append(f"Row {i + 1}: {str(e)}")
+
+        return {
+            "success": len(errors) == 0,
+            "total_added": len(added),
+            "errors": errors,
+            "products": added,
+        }
+
+    def export_dataset(self) -> Dict[str, Any]:
+        """Exports the entire catalog and AVL tree metrics in JSON-ready format."""
+        return {
+            "catalog": self.get_all_products(),
+            "tree": self.get_tree_structure(),
+            "statistics": self.get_statistics(),
+            "invariants": self.validate_tree_invariants(),
+        }
 
     # ---------------------------------------------------------
     # Sample Dataset
@@ -272,16 +345,16 @@ class ProductManager:
                 conn.commit()
 
         samples = [
-            ("USB-C Fast Cable", "Electronics", 12.99),
-            ("Braided Audio Aux Cable", "Accessories", 12.99),  # Duplicate price
-            ("Optical Mouse", "Electronics", 19.50),
-            ("Compact Mechanical Keyboard", "Electronics", 49.99),
-            ("Ergonomic Vertical Mouse", "Electronics", 49.99), # Duplicate price
-            ("27-inch IPS Monitor", "Displays", 189.00),
-            ("Laptop Stand Aluminium", "Accessories", 29.99),
-            ("Wireless Noise Cancelling Earbuds", "Audio", 79.90),
-            ("Desk LED Lamp", "Home Office", 34.50),
-            ("External SSD 1TB", "Storage", 110.00),
+            ("USB-C Fast Cable", "Electronics", 999.00),
+            ("Braided Audio Aux Cable", "Accessories", 999.00),  # Duplicate price
+            ("Optical Mouse", "Electronics", 1649.00),
+            ("Compact Mechanical Keyboard", "Electronics", 4199.00),
+            ("Ergonomic Vertical Mouse", "Electronics", 4199.00),  # Duplicate price
+            ("27-inch IPS Monitor", "Displays", 15999.00),
+            ("Laptop Stand Aluminium", "Accessories", 2499.00),
+            ("Wireless Noise Cancelling Earbuds", "Audio", 6799.00),
+            ("Desk LED Lamp", "Home Office", 2899.00),
+            ("External SSD 1TB", "Storage", 9299.00),
         ]
 
         for name, cat, price in samples:

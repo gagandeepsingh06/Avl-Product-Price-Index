@@ -1,42 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
 import ProductManager from './components/ProductManager';
 import SearchPrice from './components/SearchPrice';
 import TreeVisualizer from './components/TreeVisualizer';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'products', 'search', 'tree'
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [theme, setTheme] = useState(() => localStorage.getItem('avl-theme') || 'light');
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [treeData, setTreeData] = useState(null);
   const [searchResults, setSearchResults] = useState(null);
   const [searchTrace, setSearchTrace] = useState([]);
-  const [activeScenario, setActiveScenario] = useState(null);
-  const [scenarioDescription, setScenarioDescription] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [lastOpComplexity, setLastOpComplexity] = useState(null);
+  const [activeScenario, setActiveScenario] = useState(null);
+  const [scenarioDescription, setScenarioDescription] = useState(null);
 
-  // Sync theme changes with DOM
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('avl-theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
-
-  const showNotification = (message, type = 'success') => {
+  const showNotification = useCallback((message, type = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => {
-      setNotification((curr) => (curr?.message === message ? null : curr));
-    }, 4500);
-  };
+    setTimeout(() => setNotification(null), 4000);
+  }, []);
 
-  // Fetch all initial data
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
       const [prodRes, statsRes, treeRes] = await Promise.all([
@@ -44,137 +37,146 @@ export default function App() {
         fetch('/api/stats'),
         fetch('/api/tree'),
       ]);
-
       if (prodRes.ok) {
-        const prodJson = await prodRes.json();
-        setProducts(prodJson.data || []);
+        const j = await prodRes.json();
+        setProducts(j.data || []);
       }
       if (statsRes.ok) {
-        const statsJson = await statsRes.json();
-        setStats(statsJson.data || {});
+        const j = await statsRes.json();
+        setStats(j.data || {});
       }
       if (treeRes.ok) {
-        const treeJson = await treeRes.json();
-        setTreeData(treeJson.data || null);
+        const j = await treeRes.json();
+        setTreeData(j.data || null);
       }
     } catch (err) {
-      console.error('Failed to connect to Flask API:', err);
-      showNotification('Cannot reach Flask backend. Please make sure Flask is running on http://127.0.0.1:5000', 'error');
+      showNotification('Cannot reach Flask backend — is it running?', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showNotification]);
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [fetchAllData]);
 
-  // Handlers for Product Management
-  const handleAddProduct = async (newProduct) => {
+  // ── Product Operations ────────────────────────────────────────────────────
+  const handleAddProduct = useCallback(async (product) => {
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct),
+        body: JSON.stringify(product),
       });
       const data = await res.json();
       if (res.ok) {
-        showNotification(data.message || 'Product added and indexed in AVL Tree!');
-        setActiveScenario(null);
-        setScenarioDescription(null);
+        showNotification(data.message || 'Product added!');
+        if (data.complexity) setLastOpComplexity(data.complexity);
         fetchAllData();
       } else {
         showNotification(data.error || 'Failed to add product', 'error');
       }
-    } catch (err) {
-      showNotification('Network error while adding product', 'error');
+    } catch {
+      showNotification('Network error adding product', 'error');
     }
-  };
+  }, [showNotification, fetchAllData]);
 
-  const handleUpdateProduct = async (id, updatedFields) => {
+  const handleUpdateProduct = useCallback(async (id, fields) => {
     try {
       const res = await fetch(`/api/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedFields),
+        body: JSON.stringify(fields),
       });
       const data = await res.json();
       if (res.ok) {
-        showNotification(data.message || 'Product updated and re-indexed in AVL Tree!');
+        showNotification(data.message || 'Product updated!');
         fetchAllData();
       } else {
-        showNotification(data.error || 'Failed to update product', 'error');
+        showNotification(data.error || 'Failed to update', 'error');
       }
-    } catch (err) {
-      showNotification('Network error while updating product', 'error');
+    } catch {
+      showNotification('Network error updating product', 'error');
     }
-  };
+  }, [showNotification, fetchAllData]);
 
-  const handleDeleteProduct = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete "${name}" (ID #${id})?`)) {
-      return;
-    }
+  // Delete WITH confirm (used in ProductManager)
+  const handleDeleteProduct = useCallback(async (id, name) => {
+    if (!window.confirm(`Delete "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (res.ok) {
-        showNotification(data.message || 'Product deleted and AVL node rebalanced!');
+        showNotification(data.message || 'Product deleted!');
+        if (data.complexity) setLastOpComplexity(data.complexity);
         fetchAllData();
       } else {
-        showNotification(data.error || 'Failed to delete product', 'error');
+        showNotification(data.error || 'Failed to delete', 'error');
       }
-    } catch (err) {
-      showNotification('Network error while deleting product', 'error');
+    } catch {
+      showNotification('Network error deleting product', 'error');
     }
-  };
+  }, [showNotification, fetchAllData]);
 
-  const handleResetData = async () => {
+  // Delete WITHOUT confirm (used in Dashboard quick-test)
+  const handleQuickDelete = useCallback(async (id) => {
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        showNotification(data.message || 'Product removed (test)!');
+        if (data.complexity) setLastOpComplexity(data.complexity);
+        fetchAllData();
+      } else {
+        showNotification(data.error || 'Failed to delete', 'error');
+      }
+    } catch {
+      showNotification('Network error', 'error');
+    }
+  }, [showNotification, fetchAllData]);
+
+  const handleResetData = useCallback(async () => {
     try {
       const res = await fetch('/api/reset', { method: 'POST' });
-      const data = await res.json();
       if (res.ok) {
+        setLastOpComplexity(null);
         setActiveScenario(null);
         setScenarioDescription(null);
-        showNotification('Dataset successfully reset to demonstration samples!');
+        showNotification('Catalog reset — 10 demo products loaded!');
         fetchAllData();
-      } else {
-        showNotification(data.error || 'Failed to reset data', 'error');
       }
-    } catch (err) {
-      showNotification('Network error while resetting data', 'error');
+    } catch {
+      showNotification('Network error resetting catalog', 'error');
     }
-  };
+  }, [showNotification, fetchAllData]);
 
-  // Handler for Rotation Simulations
-  const handleTriggerRotation = async (scenarioType) => {
+  const handleTriggerRotation = useCallback(async (type) => {
+    setLoading(true);
     try {
-      setLoading(true);
       const res = await fetch('/api/demo-rotation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: scenarioType }),
+        body: JSON.stringify({ type }),
       });
       const data = await res.json();
       if (res.ok) {
-        setActiveScenario(scenarioType);
+        setActiveScenario(type);
         setScenarioDescription(data.description);
-        showNotification(`Simulated ${scenarioType} rotation successfully!`);
+        showNotification(`${type} rotation simulated!`);
         fetchAllData();
         setActiveTab('tree');
       } else {
-        showNotification(data.error || 'Failed to simulate rotation', 'error');
+        showNotification(data.error || 'Rotation failed', 'error');
       }
-    } catch (err) {
-      showNotification('Network error during rotation simulation', 'error');
+    } catch {
+      showNotification('Network error', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showNotification, fetchAllData]);
 
-  // Handlers for Searching
-  const handleSearchExact = async (price) => {
+  // ── Search ────────────────────────────────────────────────────────────────
+  const handleSearchExact = useCallback(async (price) => {
     setIsSearching(true);
     try {
       const res = await fetch(`/api/search?price=${price}`);
@@ -182,160 +184,134 @@ export default function App() {
       if (res.ok) {
         setSearchResults(data.data || []);
         setSearchTrace(data.trace || []);
-      } else {
-        showNotification(data.error || 'Search error', 'error');
       }
-    } catch (err) {
-      showNotification('Error performing exact price search', 'error');
+    } catch {
+      showNotification('Search error', 'error');
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [showNotification]);
 
-  const handleSearchRange = async (minPrice, maxPrice) => {
+  const handleSearchRange = useCallback(async (min, max) => {
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/search?min_price=${minPrice}&max_price=${maxPrice}`);
+      const res = await fetch(`/api/search?min_price=${min}&max_price=${max}`);
       const data = await res.json();
       if (res.ok) {
         setSearchResults(data.data || []);
         setSearchTrace([]);
-      } else {
-        showNotification(data.error || 'Search error', 'error');
       }
-    } catch (err) {
-      showNotification('Error performing range search', 'error');
+    } catch {
+      showNotification('Search error', 'error');
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [showNotification]);
 
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setSearchResults(null);
     setSearchTrace([]);
-  };
+  }, []);
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="app-wrapper">
-      <div className="app-container">
-        {/* Top Glass Header */}
-        <header className="header-glass">
-          <div className="brand-wrapper">
-            <div className="brand-icon-box">🌲</div>
+    <div className="app-root">
+      {/* ── Header ── */}
+      <header className="app-header">
+        <div className="header-inner">
+          <div className="brand" onClick={() => setActiveTab('dashboard')} style={{ cursor: 'pointer' }}>
+            <span className="brand-icon">🌳</span>
             <div>
-              <h1 className="brand-title">Product Price Index</h1>
-              <p className="brand-subtitle">Custom Self-Balancing AVL Binary Search Tree Implementation</p>
+              <div className="brand-title">AVL Price Index</div>
+              <div className="brand-sub">Self-Balancing Catalog · ₹ INR</div>
             </div>
           </div>
 
-          <div className="header-controls">
-            <button
-              type="button"
-              className="theme-toggle-btn"
-              onClick={toggleTheme}
-              title="Toggle Light / Dark Theme"
-            >
-              <span>{theme === 'light' ? '🌙 Dark' : '☀️ Light'}</span>
-            </button>
+          <nav className="main-nav">
+            {[
+              { key: 'dashboard', label: 'Dashboard' },
+              { key: 'products', label: `Products (${products.length})` },
+              { key: 'search', label: 'Search' },
+              { key: 'tree', label: 'Visualizer' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`nav-btn${activeTab === key ? ' active' : ''}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
 
-            <span className="badge-live">
-              <span className="pulse-dot"></span>
-              AVL Condition: -1 &le; BF &le; +1
-            </span>
-          </div>
-        </header>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+            title="Toggle theme"
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+        </div>
+      </header>
 
-        {/* Toast Notification Banner */}
-        {notification && (
-          <div className={`toast-banner ${notification.type}`}>
-            <span>{notification.message}</span>
-            <button
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'inherit' }}
-              onClick={() => setNotification(null)}
-            >
-              &times;
-            </button>
-          </div>
+      {/* ── Toast ── */}
+      {notification && (
+        <div className={`toast toast-${notification.type}`}>
+          <span>{notification.message}</span>
+          <button type="button" onClick={() => setNotification(null)}>✕</button>
+        </div>
+      )}
+
+      {/* ── Main ── */}
+      <main className="app-main">
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            stats={stats}
+            products={products}
+            lastOpComplexity={lastOpComplexity}
+            onNavigateToProducts={() => setActiveTab('products')}
+            onNavigateToTree={() => setActiveTab('tree')}
+            onNavigateToSearch={() => setActiveTab('search')}
+            onAddProduct={handleAddProduct}
+            onQuickDelete={handleQuickDelete}
+          />
         )}
-
-        {/* Modern Tabs Navigation */}
-        <nav className="modern-nav-tabs">
-          <button
-            className={`nav-item-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <span>📊</span> Dashboard
-          </button>
-          <button
-            className={`nav-item-btn ${activeTab === 'products' ? 'active' : ''}`}
-            onClick={() => setActiveTab('products')}
-          >
-            <span>📦</span> Manage Products
-            <span className="nav-badge-pill">{products.length}</span>
-          </button>
-          <button
-            className={`nav-item-btn ${activeTab === 'search' ? 'active' : ''}`}
-            onClick={() => setActiveTab('search')}
-          >
-            <span>🔍</span> Search by Price
-          </button>
-          <button
-            className={`nav-item-btn ${activeTab === 'tree' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tree')}
-          >
-            <span>🌳</span> AVL Tree Visualizer
-          </button>
-        </nav>
-
-        {/* Main Tab Views */}
-        <main>
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              stats={stats}
-              products={products}
-              onNavigateToProducts={() => setActiveTab('products')}
-              onNavigateToTree={() => setActiveTab('tree')}
-              onNavigateToSearch={() => setActiveTab('search')}
-              onTriggerRotation={handleTriggerRotation}
-            />
-          )}
-
-          {activeTab === 'products' && (
-            <ProductManager
-              products={products}
-              onAddProduct={handleAddProduct}
-              onUpdateProduct={handleUpdateProduct}
-              onDeleteProduct={handleDeleteProduct}
-              onResetData={handleResetData}
-              loading={loading}
-            />
-          )}
-
-          {activeTab === 'search' && (
-            <SearchPrice
-              onSearchExact={handleSearchExact}
-              onSearchRange={handleSearchRange}
-              onClearSearch={handleClearSearch}
-              searchResults={searchResults}
-              searchTrace={searchTrace}
-              isSearching={isSearching}
-              totalProductsCount={products.length}
-            />
-          )}
-
-          {activeTab === 'tree' && (
-            <TreeVisualizer
-              treeData={treeData}
-              onRefreshTree={fetchAllData}
-              onTriggerRotation={handleTriggerRotation}
-              onResetData={handleResetData}
-              activeScenario={activeScenario}
-              scenarioDescription={scenarioDescription}
-              loading={loading}
-            />
-          )}
-        </main>
-      </div>
+        {activeTab === 'products' && (
+          <ProductManager
+            products={products}
+            onAddProduct={handleAddProduct}
+            onUpdateProduct={handleUpdateProduct}
+            onDeleteProduct={handleDeleteProduct}
+            onResetData={handleResetData}
+            lastOpComplexity={lastOpComplexity}
+            loading={loading}
+          />
+        )}
+        {activeTab === 'search' && (
+          <SearchPrice
+            onSearchExact={handleSearchExact}
+            onSearchRange={handleSearchRange}
+            onClearSearch={handleClearSearch}
+            searchResults={searchResults}
+            searchTrace={searchTrace}
+            isSearching={isSearching}
+            totalProductsCount={products.length}
+          />
+        )}
+        {activeTab === 'tree' && (
+          <TreeVisualizer
+            treeData={treeData}
+            onRefreshTree={fetchAllData}
+            onTriggerRotation={handleTriggerRotation}
+            onResetData={handleResetData}
+            activeScenario={activeScenario}
+            scenarioDescription={scenarioDescription}
+            loading={loading}
+          />
+        )}
+      </main>
     </div>
   );
 }

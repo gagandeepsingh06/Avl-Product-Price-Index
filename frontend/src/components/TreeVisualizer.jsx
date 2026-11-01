@@ -1,105 +1,71 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
-// Helper functions for tree traversals
-function getInOrderPrices(node) {
-  if (!node) return [];
-  return [...getInOrderPrices(node.left), node.price, ...getInOrderPrices(node.right)];
+/* ── Traversal helpers ───────────────────────────────────────────────────── */
+function inOrder(n)   { if (!n) return []; return [...inOrder(n.left), n.price, ...inOrder(n.right)]; }
+function preOrder(n)  { if (!n) return []; return [n.price, ...preOrder(n.left), ...preOrder(n.right)]; }
+function postOrder(n) { if (!n) return []; return [...postOrder(n.left), ...postOrder(n.right), n.price]; }
+function levelOrder(n) {
+  if (!n) return [];
+  const q = [n], r = [];
+  while (q.length) { const c = q.shift(); r.push(c.price); if (c.left) q.push(c.left); if (c.right) q.push(c.right); }
+  return r;
 }
 
-function getPreOrderPrices(node) {
-  if (!node) return [];
-  return [node.price, ...getPreOrderPrices(node.left), ...getPreOrderPrices(node.right)];
-}
-
-function getPostOrderPrices(node) {
-  if (!node) return [];
-  return [...getPostOrderPrices(node.left), ...getPostOrderPrices(node.right), node.price];
-}
-
-// Recursive Component to render AVL Nodes and branches
-function TreeNode({ node, onSelectNode, selectedPrice, traversingPrice, direction = 'ROOT' }) {
+/* ── Single Tree Node ────────────────────────────────────────────────────── */
+function TreeNode({ node, selected, traversing, onSelect }) {
   if (!node) return null;
 
-  const isSelected = selectedPrice === node.price;
-  const isTraversing = traversingPrice === node.price;
-  const bf = node.balance_factor;
-  const isBalanced = Math.abs(bf) <= 1;
+  const bf         = node.balance_factor;
+  const bfColor    = Math.abs(bf) > 1 ? '#ef4444' : bf !== 0 ? '#818cf8' : '#34d399';
+  const isSelected   = selected   === node.price;
+  const isTraversing = traversing === node.price;
 
-  // Balance factor badge styling
-  let bfClass = 'bf-zero';
-  if (!isBalanced) bfClass = 'bf-invalid';
-  else if (bf > 0) bfClass = 'bf-pos';
-  else if (bf < 0) bfClass = 'bf-neg';
+  const hasLeft  = !!node.left;
+  const hasRight = !!node.right;
+  const hasChildren = hasLeft || hasRight;
+  const hasBoth     = hasLeft && hasRight;
 
   return (
-    <div className="tree-node-wrapper">
-      {/* Node Direction Indicator (L or R) */}
-      {direction !== 'ROOT' && (
-        <span className="branch-dir-badge">
-          {direction === 'L' ? '◀ L' : 'R ▶'}
-        </span>
-      )}
-
-      {/* Node Card */}
+    <div className="tn-wrap">
+      {/* ── Node Card ── */}
       <div
-        className={`tree-node-card-awesome ${isSelected ? 'selected' : ''} ${isTraversing ? 'traversing-active' : ''}`}
-        onClick={() => onSelectNode(node)}
-        title="Click to inspect all products attached to this price node"
+        className={`tn-card${isSelected ? ' tn-selected' : ''}${isTraversing ? ' tn-traversing' : ''}`}
+        onClick={() => onSelect(node)}
       >
-        <div className="node-price-label">${node.price.toFixed(2)}</div>
-
-        <div className="node-meta-row">
-          <span className="node-pill-height">H: {node.height}</span>
-          <span className={`node-pill-bf ${bfClass}`}>
-            BF: {bf > 0 ? `+${bf}` : bf}
-          </span>
-        </div>
-
         {node.product_count > 1 && (
-          <div className="node-badge-shared">
-            ● {node.product_count} Products
-          </div>
+          <span className="tn-badge">{node.product_count}</span>
         )}
+        <div className="tn-price">
+          ₹{Number(node.price).toLocaleString('en-IN')}
+        </div>
+        <div className="tn-meta">
+          <span>H:{node.height}</span>
+          <span style={{ color: bfColor, fontWeight: 700 }}>BF:{bf > 0 ? `+${bf}` : bf}</span>
+        </div>
       </div>
 
-      {/* Child branches (Left & Right) */}
-      {(node.left || node.right) && (
-        <div className="tree-children-container">
-          {/* Left Branch */}
-          <div className="tree-branch-column">
-            {node.left ? (
-              <TreeNode
-                node={node.left}
-                onSelectNode={onSelectNode}
-                selectedPrice={selectedPrice}
-                traversingPrice={traversingPrice}
-                direction="L"
-              />
-            ) : (
-              <div style={{ width: '40px', height: '20px', visibility: 'hidden' }}></div>
-            )}
-          </div>
-
-          {/* Right Branch */}
-          <div className="tree-branch-column">
-            {node.right ? (
-              <TreeNode
-                node={node.right}
-                onSelectNode={onSelectNode}
-                selectedPrice={selectedPrice}
-                traversingPrice={traversingPrice}
-                direction="R"
-              />
-            ) : (
-              <div style={{ width: '40px', height: '20px', visibility: 'hidden' }}></div>
-            )}
-          </div>
+      {/* ── Children with connectors ── */}
+      {hasChildren && (
+        <div className={`tn-children ${hasBoth ? 'tn-two' : hasLeft ? 'tn-left-only' : 'tn-right-only'}`}>
+          {hasLeft && (
+            <div className="tn-branch tn-branch-l">
+              <span className="tn-dir">L</span>
+              <TreeNode node={node.left} selected={selected} traversing={traversing} onSelect={onSelect} />
+            </div>
+          )}
+          {hasRight && (
+            <div className="tn-branch tn-branch-r">
+              <span className="tn-dir">R</span>
+              <TreeNode node={node.right} selected={selected} traversing={traversing} onSelect={onSelect} />
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
+/* ── Main Visualizer ─────────────────────────────────────────────────────── */
 export default function TreeVisualizer({
   treeData,
   onRefreshTree,
@@ -109,296 +75,164 @@ export default function TreeVisualizer({
   scenarioDescription,
   loading,
 }) {
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [activeTraversal, setActiveTraversal] = useState(null);
-  const [traversingPrice, setTraversingPrice] = useState(null);
-  const [traversalResult, setTraversalResult] = useState([]);
+  const [selected,    setSelected]    = useState(null);
+  const [zoom,        setZoom]        = useState(1);
+  const [travType,    setTravType]    = useState('inorder');
+  const [travResult,  setTravResult]  = useState([]);
+  const [travPrice,   setTravPrice]   = useState(null);
+  const [playing,     setPlaying]     = useState(false);
 
-  // Handle animated tree traversal
-  const handleStartTraversal = (type) => {
-    if (!treeData) return;
+  const fmtINR = v => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-    let prices = [];
-    if (type === 'inorder') prices = getInOrderPrices(treeData);
-    else if (type === 'preorder') prices = getPreOrderPrices(treeData);
-    else if (type === 'postorder') prices = getPostOrderPrices(treeData);
-
-    setActiveTraversal(type);
-    setTraversalResult([]);
-
-    let step = 0;
-    const interval = setInterval(() => {
-      if (step < prices.length) {
-        const curPrice = prices[step];
-        setTraversingPrice(curPrice);
-        setTraversalResult((prev) => [...prev, curPrice]);
-        step += 1;
+  const handlePlay = () => {
+    if (!treeData || playing) return;
+    const prices =
+      travType === 'inorder'   ? inOrder(treeData) :
+      travType === 'preorder'  ? preOrder(treeData) :
+      travType === 'postorder' ? postOrder(treeData) :
+      levelOrder(treeData);
+    setTravResult([]);
+    setPlaying(true);
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i < prices.length) {
+        setTravPrice(prices[i]);
+        setTravResult(prev => [...prev, prices[i]]);
+        i++;
       } else {
-        clearInterval(interval);
-        setTimeout(() => setTraversingPrice(null), 1000);
+        clearInterval(iv);
+        setPlaying(false);
+        setTimeout(() => setTravPrice(null), 1200);
       }
-    }, 600);
+    }, 550);
   };
-
-  const handleSelectNode = (node) => {
-    setSelectedNode(node);
-  };
-
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.15, 1.4));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.15, 0.65));
-  const handleZoomReset = () => setZoomLevel(1);
 
   return (
-    <div>
-      {/* Interactive Rotation Simulator Bar */}
-      <div className="simulator-box">
-        <div className="simulator-header">
-          <div className="simulator-title">
-            <span>🎮</span>
-            <span>Live AVL Rotation Simulator & Viva Player</span>
+    <div className="page">
+      {/* ── Header ── */}
+      <div className="section-header">
+        <div>
+          <div className="section-title">AVL Tree Visualizer</div>
+          <div className="section-sub">
+            Price hierarchy · BF ∈ [−1, +1] · Click any node to inspect
           </div>
-
-          <button
-            type="button"
-            className="btn-modern btn-modern-secondary btn-xs"
-            onClick={onResetData}
-            title="Restore original 10 sample products"
-          >
-            🔄 Restore Full Catalog
-          </button>
         </div>
 
-        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-          Click any preset below to trigger that specific AVL rotation on the live tree:
-        </p>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <select className="select" style={{ width: 'auto' }} value={travType}
+            onChange={e => setTravType(e.target.value)} disabled={playing}>
+            <option value="inorder">In-Order (sorted)</option>
+            <option value="preorder">Pre-Order</option>
+            <option value="postorder">Post-Order</option>
+            <option value="levelorder">Level-Order (BFS)</option>
+          </select>
+          <button type="button" className="btn btn-primary btn-sm"
+            onClick={handlePlay} disabled={playing || !treeData}>
+            {playing ? '⏳ Playing…' : '▶ Play'}
+          </button>
 
-        <div className="simulator-actions">
-          <button
-            type="button"
-            className={`sim-btn ${activeScenario === 'LL' ? 'active' : ''}`}
-            onClick={() => onTriggerRotation('LL')}
-          >
-            ▶ LL: Right Rotate (30 &rarr; 20 &rarr; 10)
-          </button>
-          <button
-            type="button"
-            className={`sim-btn ${activeScenario === 'RR' ? 'active' : ''}`}
-            onClick={() => onTriggerRotation('RR')}
-          >
-            ▶ RR: Left Rotate (10 &rarr; 20 &rarr; 30)
-          </button>
-          <button
-            type="button"
-            className={`sim-btn ${activeScenario === 'LR' ? 'active' : ''}`}
-            onClick={() => onTriggerRotation('LR')}
-          >
-            ▶ LR: Double Rotate (30 &rarr; 10 &rarr; 20)
-          </button>
-          <button
-            type="button"
-            className={`sim-btn ${activeScenario === 'RL' ? 'active' : ''}`}
-            onClick={() => onTriggerRotation('RL')}
-          >
-            ▶ RL: Double Rotate (10 &rarr; 30 &rarr; 20)
-          </button>
-        </div>
+          <select className="select" style={{ width: 'auto' }}
+            value={activeScenario || ''}
+            onChange={e => { if (e.target.value) onTriggerRotation(e.target.value); }}
+            disabled={loading}>
+            <option value="">Simulate Rotation…</option>
+            <option value="LL">LL (Right Rotate)</option>
+            <option value="RR">RR (Left Rotate)</option>
+            <option value="LR">LR (Double)</option>
+            <option value="RL">RL (Double)</option>
+          </select>
 
-        {scenarioDescription && (
-          <div className="sim-explanation-card">
-            <strong>Active Simulation:</strong> {scenarioDescription}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onResetData}>🔄 Reset</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onRefreshTree} disabled={loading}>↺ Refresh</button>
+
+          <div className="zoom-group">
+            <button type="button" onClick={() => setZoom(z => Math.max(+(z - 0.1).toFixed(1), 0.4))}>−</button>
+            <button type="button" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+            <button type="button" onClick={() => setZoom(z => Math.min(+(z + 0.1).toFixed(1), 1.5))}>+</button>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Traversal Animator Bar */}
-      <div className="traversal-animator-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800 }}>🚶‍♂️ Live Traversal Animator:</span>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Highlights nodes sequentially:
-          </span>
+      {scenarioDescription && (
+        <div className="alert-banner">
+          ⚡ <strong>Rotation:</strong> {scenarioDescription}
         </div>
+      )}
 
-        <div className="traversal-controls">
-          <button
-            type="button"
-            className={`traversal-btn ${activeTraversal === 'inorder' ? 'active' : ''}`}
-            onClick={() => handleStartTraversal('inorder')}
-            title="Left -> Root -> Right: Visits in ascending sorted price order"
-          >
-            ▶ In-Order (Sorted Ascending)
-          </button>
-          <button
-            type="button"
-            className={`traversal-btn ${activeTraversal === 'preorder' ? 'active' : ''}`}
-            onClick={() => handleStartTraversal('preorder')}
-          >
-            ▶ Pre-Order (Root First)
-          </button>
-          <button
-            type="button"
-            className={`traversal-btn ${activeTraversal === 'postorder' ? 'active' : ''}`}
-            onClick={() => handleStartTraversal('postorder')}
-          >
-            ▶ Post-Order (Children First)
-          </button>
-        </div>
-
-        {traversalResult.length > 0 && (
-          <div style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-              Sequence:
-            </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              {traversalResult.map((p, idx) => (
-                <span key={idx} className="traversal-result-pill">
-                  ${p.toFixed(2)}
-                </span>
-              ))}
-            </div>
+      {/* Traversal sequence */}
+      {travResult.length > 0 && (
+        <div className="card" style={{ padding: '12px 18px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', marginBottom: '8px' }}>
+            {travType} sequence ({travResult.length} nodes):
           </div>
-        )}
-      </div>
-
-      {/* Tree Visualization Canvas Card */}
-      <div className="glass-card">
-        <div className="card-header-row">
-          <div>
-            <h3 className="card-heading">
-              <span>🌳</span> AVL Tree Visualizer Canvas
-            </h3>
-            <p className="card-subtext">
-              Real-time graphical tree generated from the Python backend. Click any node to inspect its product bucket.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Zoom Controls */}
-            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-card-subtle)', padding: '3px', borderRadius: 'var(--radius-sm)' }}>
-              <button
-                type="button"
-                className="btn-modern btn-modern-secondary btn-xs"
-                onClick={handleZoomIn}
-                title="Zoom In"
-              >
-                +
-              </button>
-              <button
-                type="button"
-                className="btn-modern btn-modern-secondary btn-xs"
-                onClick={handleZoomReset}
-                title="Reset Zoom"
-              >
-                {Math.round(zoomLevel * 100)}%
-              </button>
-              <button
-                type="button"
-                className="btn-modern btn-modern-secondary btn-xs"
-                onClick={handleZoomOut}
-                title="Zoom Out"
-              >
-                -
-              </button>
-            </div>
-
-            <span className="node-pill-bf bf-zero" style={{ fontSize: '0.7rem' }}>
-              BF: 0 (Equal)
-            </span>
-            <span className="node-pill-bf bf-pos" style={{ fontSize: '0.7rem' }}>
-              BF: +1 (Left-heavy)
-            </span>
-            <span className="node-pill-bf bf-neg" style={{ fontSize: '0.7rem' }}>
-              BF: -1 (Right-heavy)
-            </span>
-
-            <button
-              type="button"
-              className="btn-modern btn-modern-secondary btn-xs"
-              onClick={onRefreshTree}
-              disabled={loading}
-            >
-              {loading ? 'Refreshing...' : '🔄 Refresh Canvas'}
-            </button>
+          <div className="traversal-pills">
+            {travResult.map((p, i) => (
+              <span key={i} className="trav-pill">{fmtINR(p)}</span>
+            ))}
           </div>
         </div>
+      )}
 
-        {/* Tree Render Canvas with Zoom Transform */}
+      {/* Tree canvas */}
+      <div className="card tree-canvas-card">
         {!treeData ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
-            <p>Tree is currently empty. Add products to generate nodes.</p>
+          <div className="empty-state">
+            <div className="empty-icon">🌳</div>
+            <p style={{ fontWeight: 600 }}>Tree is empty</p>
+            <p>Add products to see the AVL tree.</p>
           </div>
         ) : (
           <div className="tree-canvas-scroll">
-            <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}>
+            <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.15s' }}>
               <TreeNode
                 node={treeData}
-                onSelectNode={handleSelectNode}
-                selectedPrice={selectedNode ? selectedNode.price : null}
-                traversingPrice={traversingPrice}
-                direction="ROOT"
+                selected={selected?.price ?? null}
+                traversing={travPrice}
+                onSelect={n => setSelected(n)}
               />
             </div>
           </div>
         )}
+      </div>
 
-        {/* Selected Node Details Drawer */}
-        {selectedNode && (
-          <div
-            style={{
-              background: 'var(--bg-card-subtle)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 'var(--radius-md)',
-              padding: '20px',
-              marginTop: '20px',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🏷️</span> Price Node: ${selectedNode.price.toFixed(2)}
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Node Height: <strong>{selectedNode.height}</strong> &bull; Balance Factor: <strong>{selectedNode.balance_factor}</strong> &bull; Storing {selectedNode.products.length} product{selectedNode.products.length > 1 ? 's' : ''}
-                </p>
+      {/* Node inspector */}
+      {selected && (
+        <div className="card" style={{ borderLeft: '3px solid var(--primary)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <div className="card-title">Node: {fmtINR(selected.price)}</div>
+              <div className="card-sub">
+                Height: {selected.height} · BF: {selected.balance_factor} · {selected.products?.length ?? selected.product_count} product(s)
               </div>
-
-              <button
-                className="btn-modern btn-modern-secondary btn-xs"
-                onClick={() => setSelectedNode(null)}
-              >
-                Close Inspector &times;
-              </button>
             </div>
-
-            <div className="table-wrapper-modern">
-              <table className="modern-table">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Close</button>
+          </div>
+          {selected.products?.length > 0 && (
+            <div className="table-wrap">
+              <table>
                 <thead>
                   <tr>
-                    <th>Product ID</th>
-                    <th>Product Name</th>
+                    <th style={{ width: 60 }}>ID</th>
+                    <th>Product</th>
                     <th>Category</th>
-                    <th>Price ($)</th>
+                    <th style={{ textAlign: 'right' }}>Price (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedNode.products.map((p) => (
+                  {selected.products.map(p => (
                     <tr key={p.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
-                        #{p.id}
-                      </td>
+                      <td style={{ color: 'var(--muted)', fontFamily: 'monospace', fontSize: '0.8rem' }}>#{p.id}</td>
                       <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td><span className="badge-category">{p.category}</span></td>
-                      <td><span className="price-pill-bold">${p.price.toFixed(2)}</span></td>
+                      <td><span className="tag">{p.category}</span></td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace' }}>{fmtINR(p.price)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

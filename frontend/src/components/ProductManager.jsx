@@ -1,297 +1,286 @@
 import React, { useState, useMemo } from 'react';
 
+const CATEGORIES = ['Electronics', 'Displays', 'Accessories', 'Audio', 'Storage', 'Home Office', 'Stationery', 'Other'];
+const PRESETS = [499, 999, 1649, 2499, 4199, 6799, 9299, 15999];
+
 export default function ProductManager({
-  products,
+  products = [],
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
   onResetData,
+  lastOpComplexity,
   loading,
 }) {
-  const [editingId, setEditingId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [showComplexity, setShowComplexity] = useState(false);
+  const [compTab, setCompTab] = useState('add');
+  const [editId, setEditId] = useState(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [price, setPrice] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [filterCat, setFilterCat] = useState('All');
+  const [sortBy, setSortBy] = useState('price-asc');
+  const [dismissedOp, setDismissedOp] = useState(false);
 
-  const categories = ['Electronics', 'Displays', 'Accessories', 'Audio', 'Storage', 'Home Office', 'Stationery', 'Other'];
-  const pricePresets = [9.99, 12.99, 19.50, 29.99, 49.99, 79.90, 110.00];
+  const priceFreq = useMemo(() =>
+    products.reduce((a, p) => { a[p.price] = (a[p.price] || 0) + 1; return a; }, {}),
+    [products]
+  );
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name.trim() || !category.trim() || price === '') return;
-
-    const numPrice = parseFloat(price);
-    if (isNaN(numPrice) || numPrice < 0) {
-      alert('Please enter a valid positive price.');
-      return;
-    }
-
-    if (editingId !== null) {
-      onUpdateProduct(editingId, { name, category, price: numPrice });
-      handleCancelEdit();
-    } else {
-      onAddProduct({ name, category, price: numPrice });
-      setName('');
-      setCategory('');
-      setPrice('');
-    }
-  };
-
-  const handleStartEdit = (product) => {
-    setEditingId(product.id);
-    setName(product.name);
-    setCategory(product.category);
-    setPrice(product.price.toString());
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setName('');
-    setCategory('');
-    setPrice('');
-  };
-
-  // Group products by price to identify duplicate price nodes
-  const priceFrequency = useMemo(() => {
-    return products.reduce((acc, p) => {
-      acc[p.price] = (acc[p.price] || 0) + 1;
-      return acc;
-    }, {});
-  }, [products]);
-
-  // Filter products by search term and category filter
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.price.toString().includes(searchTerm);
-      const matchesCat =
-        selectedCategoryFilter === 'All' || p.category === selectedCategoryFilter;
-      return matchesSearch && matchesCat;
+  const filtered = useMemo(() => {
+    let list = products.filter(p => {
+      const q = search.toLowerCase();
+      return (
+        (p.name.toLowerCase().includes(q) ||
+         p.category.toLowerCase().includes(q) ||
+         String(p.price).includes(q)) &&
+        (filterCat === 'All' || p.category === filterCat)
+      );
     });
-  }, [products, searchTerm, selectedCategoryFilter]);
+    if (sortBy === 'price-asc')  list.sort((a, b) => a.price - b.price);
+    if (sortBy === 'price-desc') list.sort((a, b) => b.price - a.price);
+    if (sortBy === 'name-asc')   list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [products, search, filterCat, sortBy]);
+
+  const openAdd = () => { setEditId(null); setName(''); setCategory(''); setPrice(''); setShowForm(true); };
+  const openEdit = p => { setEditId(p.id); setName(p.name); setCategory(p.category); setPrice(String(p.price)); setShowForm(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setName(''); setCategory(''); setPrice(''); };
+
+  const handleSubmit = e => {
+    e.preventDefault();
+    const num = parseFloat(price);
+    if (isNaN(num) || num < 0) { alert('Enter a valid price in ₹'); return; }
+    setDismissedOp(false);
+    if (editId !== null) { onUpdateProduct(editId, { name, category, price: num }); }
+    else                 { onAddProduct({ name, category, price: num }); }
+    closeForm();
+  };
+
+  const fmtINR = v => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
-    <div>
-      {/* Product Entry & Edit Form */}
-      <div className="glass-card">
-        <div className="card-header-row">
-          <div>
-            <h3 className="card-heading">
-              <span>{editingId !== null ? '✏️' : '➕'}</span>
-              <span>{editingId !== null ? `Edit Product #${editingId}` : 'Add New Product to AVL Index'}</span>
-            </h3>
-            <p className="card-subtext">
-              Every addition or price modification automatically indexes the price key into the AVL Tree in O(log n) time.
-            </p>
-          </div>
-          {editingId !== null && (
-            <button
-              type="button"
-              className="btn-modern btn-modern-secondary btn-xs"
-              onClick={handleCancelEdit}
-            >
-              Cancel Edit
-            </button>
-          )}
+    <div className="page">
+      {/* ── Section Header ── */}
+      <div className="section-header">
+        <div>
+          <div className="section-title">Product Catalog</div>
+          <div className="section-sub">{products.length} products indexed in the self-balancing AVL Tree</div>
         </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-grid-3">
-            <div className="form-group-custom">
-              <label className="form-label-custom">Product Name</label>
-              <input
-                type="text"
-                className="form-input-custom"
-                placeholder="e.g. Ergonomic Bluetooth Mouse"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group-custom">
-              <label className="form-label-custom">Category</label>
-              <input
-                type="text"
-                list="category-suggestions"
-                className="form-input-custom"
-                placeholder="Select or type category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                required
-              />
-              <datalist id="category-suggestions">
-                {categories.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className="form-group-custom">
-              <label className="form-label-custom">Price ($ USD)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="form-input-custom"
-                placeholder="e.g. 29.99"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="submit"
-                className="btn-modern btn-modern-primary"
-                disabled={loading}
-              >
-                {editingId !== null ? 'Update Item' : '+ Add Product'}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Price Presets (Helps quickly test duplicate prices) */}
-          <div className="price-presets-row">
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '4px' }}>
-              Quick Presets:
-            </span>
-            {pricePresets.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className="preset-chip"
-                onClick={() => setPrice(preset.toString())}
-              >
-                ${preset.toFixed(2)}
-              </button>
-            ))}
-          </div>
-        </form>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-secondary" onClick={onResetData} title="Reload 10 demo products">
+            📦 Pre-add 10 Products
+          </button>
+          <button
+            type="button"
+            className={`btn ${showComplexity ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setShowComplexity(v => !v)}
+          >
+            ⚡ {showComplexity ? 'Hide Complexities' : 'AVL Complexities'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => { if (showForm) closeForm(); else openAdd(); }}>
+            {showForm && editId === null ? 'Cancel' : '+ Add Product'}
+          </button>
+        </div>
       </div>
 
-      {/* Product List Table Card */}
-      <div className="glass-card">
-        <div className="table-filter-bar">
-          <div>
-            <h3 className="card-heading" style={{ fontSize: '1.15rem' }}>
-              <span>📦</span> Products Catalog ({products.length})
-            </h3>
-            <p className="card-subtext">
-              Natural ascending price ordering guaranteed by AVL In-Order Traversal (O(N)).
-            </p>
+      {/* ── Last operation complexity banner ── */}
+      {lastOpComplexity && !dismissedOp && (
+        <div className="card complexity-banner">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '1.3rem' }}>⚡</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                  AVL Operation:{' '}
+                  <span style={{ color: lastOpComplexity.operation === 'add' ? 'var(--emerald)' : 'var(--amber)' }}>
+                    {lastOpComplexity.operation === 'add' ? 'Insertion' : 'Deletion'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '2px' }}>
+                  {lastOpComplexity.explanation}
+                </div>
+              </div>
+            </div>
+            <button type="button" className="close-btn" onClick={() => setDismissedOp(true)}>✕</button>
+          </div>
+          <div className="comp-metric-row">
+            {[
+              ['Time', lastOpComplexity.time_complexity],
+              ['Comparisons', `${lastOpComplexity.comparisons} levels`],
+              ['Rotations', lastOpComplexity.rotations_count > 0 ? lastOpComplexity.rotations.join(', ') : '0'],
+              ['Tree Height', lastOpComplexity.tree_height_after],
+            ].map(([k, v]) => (
+              <div key={k} className="comp-metric-chip">
+                <span style={{ color: 'var(--muted)', marginRight: 4 }}>{k}:</span>
+                <strong>{v}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Complexity Guide (collapsible) ── */}
+      {showComplexity && (
+        <div className="card" style={{ borderLeft: '3px solid var(--primary)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div>
+              <div className="card-title">📐 AVL Algorithmic Complexities</div>
+              <div className="card-sub">Theoretical and structural analysis for price index operations</div>
+            </div>
+            <div className="seg-ctrl">
+              <button type="button" className={`seg-btn${compTab === 'add' ? ' active' : ''}`} onClick={() => setCompTab('add')}>Adding</button>
+              <button type="button" className={`seg-btn${compTab === 'remove' ? ' active' : ''}`} onClick={() => setCompTab('remove')}>Removing</button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {compTab === 'add' ? (
+            <>
+              <div className="comp-grid">
+                <div className="comp-box"><span className="comp-box-title">Best Case</span><span className="comp-box-val text-emerald">O(1)</span><span className="comp-box-sub">Duplicate price → just append</span></div>
+                <div className="comp-box"><span className="comp-box-title">Average / Worst</span><span className="comp-box-val text-indigo">O(log n)</span><span className="comp-box-sub">Bounded by 1.44 × log₂(n+2)</span></div>
+                <div className="comp-box"><span className="comp-box-title">Max Rotations</span><span className="comp-box-val text-emerald">≤ 1</span><span className="comp-box-sub">Single (LL/RR) or Double (LR/RL)</span></div>
+              </div>
+              <div className="steps-list">
+                <strong style={{ fontSize: '0.82rem' }}>Phases when adding a product:</strong>
+                <ol style={{ marginTop: '8px' }}>
+                  <li><strong>BST Descent O(log n):</strong> Traverse from root, comparing price keys to find insertion point.</li>
+                  <li><strong>Node Attach O(1):</strong> Create new AVLNode or append to existing node's product list.</li>
+                  <li><strong>Height Update O(log n):</strong> Unwind recursion, recalculate heights up to root.</li>
+                  <li><strong>Balance Check:</strong> Verify BF = height(left) − height(right) ∈ [−1, +1] at each ancestor.</li>
+                  <li><strong>At most 1 Rotation O(1):</strong> If |BF| &gt; 1, one single or double rotation restores AVL invariant — then stops.</li>
+                </ol>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="comp-grid">
+                <div className="comp-box"><span className="comp-box-title">Best Case</span><span className="comp-box-val text-emerald">O(1)</span><span className="comp-box-sub">Shared price node — pop from list</span></div>
+                <div className="comp-box"><span className="comp-box-title">Average / Worst</span><span className="comp-box-val text-indigo">O(log n)</span><span className="comp-box-sub">Lookup + splice + cascade</span></div>
+                <div className="comp-box"><span className="comp-box-title">Max Rotations</span><span className="comp-box-val text-amber">O(log n)</span><span className="comp-box-sub">Cascade from leaf to root</span></div>
+              </div>
+              <div className="steps-list">
+                <strong style={{ fontSize: '0.82rem' }}>Phases when removing a product:</strong>
+                <ol style={{ marginTop: '8px' }}>
+                  <li><strong>BST Search O(log n):</strong> Locate product's price node via binary search.</li>
+                  <li><strong>Bucket Check O(1):</strong> If other products share this price, remove from list only — tree unchanged.</li>
+                  <li><strong>Node Splice:</strong> Empty node is removed. Two children → find in-order successor (min of right subtree) in O(log n).</li>
+                  <li><strong>Height Recalculation:</strong> Ancestors updated on the way back to root.</li>
+                  <li><strong>Cascade Rebalancing O(log n):</strong> Unlike insertion, deletion can propagate imbalances upward — multiple rotations may occur up to the root.</li>
+                </ol>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Add / Edit Form ── */}
+      {showForm && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="card-title">
+              {editId !== null ? `Edit Product #${editId}` : 'Add New Product'}
+            </div>
+            <button type="button" className="close-btn" onClick={closeForm}>✕</button>
+          </div>
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid">
+              <div className="input-group">
+                <label className="input-label">Product Name</label>
+                <input className="input" type="text" placeholder="e.g. Mechanical Keyboard" value={name} onChange={e => setName(e.target.value)} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Category</label>
+                <input className="input" type="text" list="cat-opts" placeholder="e.g. Electronics" value={category} onChange={e => setCategory(e.target.value)} required />
+                <datalist id="cat-opts">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Price (₹ INR)</label>
+                <input className="input" type="number" step="0.01" min="0" placeholder="e.g. 2499.00" value={price} onChange={e => setPrice(e.target.value)} required />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Quick presets:</span>
+              {PRESETS.map(p => (
+                <button key={p} type="button" className="preset-chip" onClick={() => setPrice(String(p))}>
+                  ₹{p.toLocaleString('en-IN')}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {editId !== null ? 'Save Changes' : '+ Add Product'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Products Table ── */}
+      <div className="card" style={{ padding: '0' }}>
+        {/* Toolbar */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
             <input
               type="text"
-              className="table-search-input"
-              placeholder="🔍 Filter list by name/price..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+              placeholder="🔍 Search by name, category or price…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
             />
-            <button
-              type="button"
-              className="btn-modern btn-modern-secondary"
-              onClick={onResetData}
-              title="Reset catalog to demo products"
-            >
-              🔄 Reset Demo Data
-            </button>
+            <select className="select" style={{ width: 'auto' }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+              <option value="All">All Categories</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select className="select" style={{ width: 'auto' }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              <option value="price-asc">Price ↑</option>
+              <option value="price-desc">Price ↓</option>
+              <option value="name-asc">Name A–Z</option>
+            </select>
           </div>
         </div>
 
-        {/* Category Pills Filter */}
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '8px' }}>
-          {['All', ...categories].map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategoryFilter(cat)}
-              style={{
-                padding: '4px 10px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                borderRadius: '9999px',
-                border: '1px solid var(--border-color)',
-                background: selectedCategoryFilter === cat ? 'var(--primary)' : 'var(--bg-card-subtle)',
-                color: selectedCategoryFilter === cat ? 'white' : 'var(--text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {filteredProducts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-            <p>No products match your filter criteria.</p>
+        {filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📭</div>
+            <p style={{ fontWeight: 600 }}>No products found</p>
+            <p>Click <strong>"📦 Pre-add 10 Products"</strong> to load the demo catalog.</p>
           </div>
         ) : (
-          <div className="table-wrapper-modern">
-            <table className="modern-table">
+          <div className="table-wrap">
+            <table>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Product Name</th>
+                  <th style={{ width: 60 }}>ID</th>
+                  <th>Product</th>
                   <th>Category</th>
-                  <th>Price ($)</th>
-                  <th>AVL Node Group</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th>Price (₹ INR)</th>
+                  <th>AVL Node</th>
+                  <th style={{ textAlign: 'right', width: 120 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((p) => {
-                  const isDuplicate = priceFrequency[p.price] > 1;
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
-                        #{p.id}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td>
-                        <span className="badge-category">{p.category}</span>
-                      </td>
-                      <td>
-                        <span className="price-pill-bold">${p.price.toFixed(2)}</span>
-                      </td>
-                      <td>
-                        {isDuplicate ? (
-                          <span className="node-badge-shared">
-                            ● Shared Node ({priceFrequency[p.price]} items)
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            Unique Key
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '8px' }}>
-                          <button
-                            className="btn-modern btn-modern-secondary btn-xs"
-                            onClick={() => handleStartEdit(p)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="btn-modern btn-modern-danger btn-xs"
-                            onClick={() => onDeleteProduct(p.id, p.name)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filtered.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ color: 'var(--muted)', fontFamily: 'monospace', fontSize: '0.8rem' }}>#{p.id}</td>
+                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                    <td><span className="tag">{p.category}</span></td>
+                    <td style={{ fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace' }}>{fmtINR(p.price)}</td>
+                    <td>
+                      {priceFreq[p.price] > 1
+                        ? <span className="tag tag-warn" title={`${priceFreq[p.price]} products share this price`}>Shared ({priceFreq[p.price]})</span>
+                        : <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Unique</span>}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button type="button" className="action-btn action-btn-edit" onClick={() => openEdit(p)}>Edit</button>
+                      <span style={{ color: 'var(--border)', margin: '0 6px' }}>|</span>
+                      <button type="button" className="action-btn action-btn-del" onClick={() => onDeleteProduct(p.id, p.name)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
